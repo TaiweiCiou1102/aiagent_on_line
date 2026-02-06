@@ -4,9 +4,16 @@ from fastapi import FastAPI, Request, HTTPException, Header
 import uvicorn
 
 # Line Bot
-from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.v3 import WebhookHandler
+from linebot.v3.exceptions import InvalidSignatureError
+from linebot.v3.messaging import (
+    Configuration,
+    ApiClient,
+    MessagingApi,
+    ReplyMessageRequest,
+    TextMessage
+)
+from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
 # Environment
 import os 
@@ -24,7 +31,7 @@ CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
 
 # Line Bot API and Webhook Handler initialization
-line_bot_api = LineBotApi(CHANNEL_ACCESS_TOKEN)
+configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
 # FastAPI app with lifespan event to initialize the agent
@@ -52,15 +59,19 @@ async def callback(request: Request):
     return "OK"
 
 # Line Bot event handler
-@handler.add(MessageEvent, message=TextMessage)
+@handler.add(MessageEvent, message=TextMessageContent)
 def on_message(event: MessageEvent):
 
     resp = stream_agent_updates(event.message.text)
     
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=resp)
-    )
+    with ApiClient(configuration) as api_client:
+        line_bot_api = MessagingApi(api_client)
+        line_bot_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=[TextMessage(text=resp)]
+            )
+        )
     
 @app.get("/")
 def index():
